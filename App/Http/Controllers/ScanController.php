@@ -34,7 +34,7 @@ class ScanController extends Controller
     // 🔥 GET: ambil hasil scan
     public function result($id)
     {
-        $scan = Scan::with('results')->find($id);
+        $scan = Scan::with('results.vulnerabilities')->find($id);
 
         if (!$scan) {
             return response()->json([
