@@ -10,18 +10,22 @@ class Result extends Model
 {
     protected $fillable = [
         'scan_id',
-        'type',
-        'is_vulnerable',
-        'payload'
+        'type',           // XSS, SQLi, Header
+        'severity',       // 🔥 tambah ini (lebih penting dari is_vulnerable)
+        'description',    // 🔥 ganti payload jadi description
     ];
 
-    // 🔗 Relasi ke Scan (belongsTo)
+    /**
+     * 🔗 belongs to Scan
+     */
     public function scan()
     {
         return $this->belongsTo(Scan::class);
     }
 
-    // 🔥 Relasi ke Vulnerability (hasMany)
+    /**
+     * 🔥 Relasi ke vulnerability detail (optional advanced)
+     */
     public function vulnerabilities()
     {
         return $this->hasMany(Vulnerability::class);

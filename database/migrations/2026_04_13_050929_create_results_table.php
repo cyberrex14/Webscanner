@@ -6,29 +6,33 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('results', function (Blueprint $table) {
-        $table->id();
-        $table->unsignedBigInteger('scan_id');
-        $table->string('type');
-        $table->boolean('is_vulnerable');
-        $table->text('payload');
-        $table->timestamps();
+            $table->id();
 
-        $table->foreign('scan_id')
-              ->references('id')
-              ->on('scans')
-              ->onDelete('cascade');
+            // 🔗 relasi ke scan
+            $table->unsignedBigInteger('scan_id');
+
+            // jenis vulnerability
+            $table->string('type'); // XSS, SQLi, Header
+
+            // 🔥 severity level
+            $table->enum('severity', ['low', 'medium', 'high']);
+
+            // deskripsi hasil scan
+            $table->text('description');
+
+            $table->timestamps();
+
+            // foreign key
+            $table->foreign('scan_id')
+                  ->references('id')
+                  ->on('scans')
+                  ->onDelete('cascade');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('results');

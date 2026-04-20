@@ -2,19 +2,24 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use App\Models\Result;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class Scan extends Model
+class User extends Authenticatable
 {
     protected $fillable = [
-        'url',
-        'status'
+        'name',
+        'email',
+        'password'
     ];
 
-    // 🔗 1 scan punya banyak result
-    public function results()
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    // 🔗 user punya banyak scan
+    public function scans()
     {
-        return $this->hasMany(Result::class);
+        return $this->hasMany(Scan::class);
     }
 }

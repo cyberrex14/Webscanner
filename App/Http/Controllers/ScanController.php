@@ -2,39 +2,32 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Services\ScannerService;
+use App\Http\Requests\ScanRequest;
+use App\Jobs\RunScanJob;
 use App\Models\Scan;
 
 class ScanController extends Controller
 {
-    protected $scannerService;
-
-    public function __construct(ScannerService $scannerService)
+    public function store(ScanRequest $request)
     {
-        $this->scannerService = $scannerService;
-    }
+        $scan = Scan::create([
+            'user_id' => 1, // sementara
+            'target_url' => $request->validated('target_url'),
+            'status' => 'pending',
+        ]);
 
-    // 🔥 POST: start scan
-    public function start(Request $request)
-    {
-        $url = $request->input('url');
+        RunScanJob::dispatch($scan->id);
 
-        if (!$url) {
-            return response()->json([
-                'error' => 'URL is required'
-            ], 400);
-        }
-
-        $result = $this->scannerService->scan($url);
-
-        return response()->json($result);
+        return response()->json([
+            'message' => 'Scan queued',
+            'scan_id' => $scan->id
+        ], 201);
     }
 
     // 🔥 GET: ambil hasil scan
     public function result($id)
     {
-        $scan = Scan::with('results.vulnerabilities')->find($id);
+        $scan = Scan::with('results')->find($id);
 
         if (!$scan) {
             return response()->json([
@@ -45,4 +38,3 @@ class ScanController extends Controller
         return response()->json($scan);
     }
 }
-

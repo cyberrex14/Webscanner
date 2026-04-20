@@ -3,10 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
-use App\Models\Scan;
-use App\Models\Result;
-use App\Models\Vulnerability;
-use App\Services\CrawlerService;
+use Illuminate\Support\Facades\Log;
 
 class ScannerService
 {
@@ -17,84 +14,99 @@ class ScannerService
         $this->crawler = $crawler;
     }
 
-    public function scan($url)
+    public function scan($url): array
     {
-        // buat scan
-        $scan = Scan::create([
-            'url' => $url,
-            'status' => 'pending'
-        ]);
+        $results = [];
 
-        // 🔥 ambil semua link dari crawler
-        $links = $this->crawler->crawl($url);
+        // 🔥 SAFE CRAWL
+        try {
+            $links = $this->crawler->crawl($url);
 
-        // batasi biar ga berat (max 5 link)
+            if (!is_array($links)) {
+                $links = [];
+            }
+
+        } catch (\Throwable $e) {
+            Log::warning('Crawler failed', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
+            $links = [];
+        }
+
         $links = array_slice($links, 0, 5);
 
-        // kalau crawler kosong, tetap scan URL utama
         if (empty($links)) {
             $links = [$url];
         }
 
-        // 🔥 loop semua link
         foreach ($links as $link) {
-            $this->scanXSS($link, $scan->id);
-            $this->scanSQLi($link, $scan->id);
+
+            // 🔴 XSS
+            $xss = $this->scanXSS($link);
+            if ($xss !== null) {
+                $results[] = $xss;
+            }
+
+            // 🔥 SQLi
+            $sqli = $this->scanSQLi($link);
+            if ($sqli !== null) {
+                $results[] = $sqli;
+            }
         }
 
-        // update status
-        $scan->update([
-            'status' => 'done'
-        ]);
-
-        return [
-            "status" => "completed",
-            "scan_id" => $scan->id,
-            "links_scanned" => $links
-        ];
+        // 🔥 pastikan selalu array
+        return is_array($results) ? $results : [];
     }
 
-    // 🔴 XSS SCAN
-    private function scanXSS($url, $scanId)
+    private function scanXSS($url): ?array
     {
         $payload = "<script>alert(1)</script>";
         $testUrl = $url . "?q=" . urlencode($payload);
 
         try {
-            $response = Http::timeout(15)->get($testUrl);
-            $body = $response->body();
+            $response = Http::timeout(10)
+                ->retry(1, 100) // retry 1x
+                ->get($testUrl);
 
-            $isVulnerable = str_contains($body, $payload);
-
-            $result = Result::create([
-                'scan_id' => $scanId,
-                'type' => 'XSS',
-                'is_vulnerable' => $isVulnerable,
-                'payload' => $payload
-            ]);
-
-            if ($isVulnerable) {
-                Vulnerability::create([
-                    'result_id' => $result->id,
-                    'name' => 'Cross Site Scripting',
-                    'severity' => 'high',
-                    'description' => 'Reflected XSS detected'
-                ]);
+            if (!$response->ok()) {
+                return null;
             }
 
-        } catch (\Exception $e) {
-            // silent error
+            $body = $response->body();
+
+            if (str_contains($body, $payload)) {
+                return [
+                    'type' => 'XSS',
+                    'severity' => 'high',
+                    'description' => "Reflected XSS on {$url}"
+                ];
+            }
+
+        } catch (\Throwable $e) {
+            Log::warning('XSS scan error', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
         }
+
+        return null;
     }
 
-    // 🔥 SQL INJECTION SCAN
-    private function scanSQLi($url, $scanId)
+    private function scanSQLi($url): ?array
     {
         $payload = "' OR 1=1 --";
         $testUrl = $url . "?id=" . urlencode($payload);
 
         try {
-            $response = Http::timeout(15)->get($testUrl);
+            $response = Http::timeout(10)
+                ->retry(1, 100)
+                ->get($testUrl);
+
+            if (!$response->ok()) {
+                return null;
+            }
+
             $body = strtolower($response->body());
 
             $errors = [
@@ -106,33 +118,23 @@ class ScannerService
                 "query failed"
             ];
 
-            $isVulnerable = false;
-
             foreach ($errors as $error) {
                 if (str_contains($body, $error)) {
-                    $isVulnerable = true;
-                    break;
+                    return [
+                        'type' => 'SQLi',
+                        'severity' => 'high',
+                        'description' => "Possible SQL Injection on {$url}"
+                    ];
                 }
             }
 
-            $result = Result::create([
-                'scan_id' => $scanId,
-                'type' => 'SQLi',
-                'is_vulnerable' => $isVulnerable,
-                'payload' => $payload
+        } catch (\Throwable $e) {
+            Log::warning('SQLi scan error', [
+                'url' => $url,
+                'error' => $e->getMessage()
             ]);
-
-            if ($isVulnerable) {
-                Vulnerability::create([
-                    'result_id' => $result->id,
-                    'name' => 'SQL Injection',
-                    'severity' => 'high',
-                    'description' => 'Possible SQL Injection vulnerability'
-                ]);
-            }
-
-        } catch (\Exception $e) {
-            // silent error
         }
+
+        return null;
     }
 }
