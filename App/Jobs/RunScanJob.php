@@ -3,31 +3,21 @@
 namespace App\Jobs;
 
 use App\Models\Scan;
+use App\Models\Result;
+use App\Models\Vulnerability;
 use App\Services\ScannerService;
-use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Foundation\Queue\Queueable;
 
 class RunScanJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Queueable;
 
-    protected int $scanId;
-
-    public function __construct(int $scanId)
-    {
-        $this->scanId = $scanId;
-    }
+    public function __construct(public int $scanId) {}
 
     public function handle(ScannerService $scannerService): void
     {
-        $scan = Scan::find($this->scanId);
-
-        if (!$scan) {
-            return;
-        }
+        $scan = Scan::findOrFail($this->scanId);
 
         $scan->update([
             'status' => 'scanning',
@@ -35,10 +25,25 @@ class RunScanJob implements ShouldQueue
         ]);
 
         try {
-            $results = $scannerService->scan($scan->target_url);
+            $findings = $scannerService->scan($scan->target_url);
 
-            foreach ($results as $r) {
-                $scan->results()->create($r);
+            foreach ($findings as $f) {
+
+                // 🔥 simpan ke results
+                $result = Result::create([
+                    'scan_id' => $scan->id,
+                    'type' => $f['type'],
+                    'is_vulnerable' => true,
+                    'payload' => $f['payload'] ?? null,
+                ]);
+
+                // 🔥 simpan vulnerability
+                Vulnerability::create([
+                    'result_id' => $result->id,
+                    'name' => $f['type'],
+                    'severity' => $f['severity'],
+                    'description' => $f['description'],
+                ]);
             }
 
             $scan->update([
@@ -51,8 +56,6 @@ class RunScanJob implements ShouldQueue
                 'status' => 'failed',
                 'finished_at' => now(),
             ]);
-
-            \Log::error($e->getMessage());
         }
     }
 }

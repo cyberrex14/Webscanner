@@ -14,11 +14,13 @@ class ScannerService
         $this->crawler = $crawler;
     }
 
+    /**
+     * Main scan entry
+     */
     public function scan($url): array
     {
         $results = [];
 
-        // 🔥 SAFE CRAWL
         try {
             $links = $this->crawler->crawl($url);
 
@@ -29,11 +31,13 @@ class ScannerService
         } catch (\Throwable $e) {
             Log::warning('Crawler failed', [
                 'url' => $url,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             $links = [];
         }
 
+        // limit scan
         $links = array_slice($links, 0, 5);
 
         if (empty($links)) {
@@ -42,23 +46,23 @@ class ScannerService
 
         foreach ($links as $link) {
 
-            // 🔴 XSS
             $xss = $this->scanXSS($link);
             if ($xss !== null) {
                 $results[] = $xss;
             }
 
-            // 🔥 SQLi
             $sqli = $this->scanSQLi($link);
             if ($sqli !== null) {
                 $results[] = $sqli;
             }
         }
 
-        // 🔥 pastikan selalu array
-        return is_array($results) ? $results : [];
+        return $results;
     }
 
+    /**
+     * 🔴 XSS SCAN
+     */
     private function scanXSS($url): ?array
     {
         $payload = "<script>alert(1)</script>";
@@ -66,7 +70,7 @@ class ScannerService
 
         try {
             $response = Http::timeout(10)
-                ->retry(1, 100) // retry 1x
+                ->retry(1, 100)
                 ->get($testUrl);
 
             if (!$response->ok()) {
@@ -78,21 +82,26 @@ class ScannerService
             if (str_contains($body, $payload)) {
                 return [
                     'type' => 'XSS',
+                    'payload' => $payload,
+                    'url' => $url,
                     'severity' => 'high',
-                    'description' => "Reflected XSS on {$url}"
+                    'description' => "Reflected XSS detected on {$url}",
                 ];
             }
 
         } catch (\Throwable $e) {
             Log::warning('XSS scan error', [
                 'url' => $url,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
 
         return null;
     }
 
+    /**
+     * 🔥 SQL INJECTION SCAN
+     */
     private function scanSQLi($url): ?array
     {
         $payload = "' OR 1=1 --";
@@ -115,15 +124,17 @@ class ScannerService
                 "syntax error",
                 "warning",
                 "pdo",
-                "query failed"
+                "query failed",
             ];
 
             foreach ($errors as $error) {
                 if (str_contains($body, $error)) {
                     return [
                         'type' => 'SQLi',
+                        'payload' => $payload,
+                        'url' => $url,
                         'severity' => 'high',
-                        'description' => "Possible SQL Injection on {$url}"
+                        'description' => "Possible SQL Injection detected on {$url}",
                     ];
                 }
             }
@@ -131,7 +142,7 @@ class ScannerService
         } catch (\Throwable $e) {
             Log::warning('SQLi scan error', [
                 'url' => $url,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
 

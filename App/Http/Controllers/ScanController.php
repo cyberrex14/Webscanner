@@ -8,6 +8,7 @@ use App\Models\Scan;
 
 class ScanController extends Controller
 {
+    // 🔥 START SCAN
     public function store(ScanRequest $request)
     {
         $scan = Scan::create([
@@ -24,10 +25,10 @@ class ScanController extends Controller
         ], 201);
     }
 
-    // 🔥 GET: ambil hasil scan
+    // 🔥 GET RESULT (SUDAH FIX)
     public function result($id)
     {
-        $scan = Scan::with('results')->find($id);
+        $scan = Scan::with('results.vulnerabilities')->find($id);
 
         if (!$scan) {
             return response()->json([
@@ -35,6 +36,21 @@ class ScanController extends Controller
             ], 404);
         }
 
-        return response()->json($scan);
+        // 🔥 NORMALISASI DI BACKEND (PENTING)
+        $results = $scan->results->flatMap(function ($r) {
+            return $r->vulnerabilities->map(function ($v) use ($r) {
+                return [
+                    'type' => $r->type,
+                    'severity' => $v->severity,
+                    'description' => $v->description,
+                ];
+            });
+        });
+
+        return response()->json([
+            'id' => $scan->id,
+            'status' => $scan->status,
+            'results' => $results,
+        ]);
     }
 }

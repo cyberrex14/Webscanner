@@ -1,24 +1,21 @@
-const BASE_URL = "https://127.0.0.1:8000/api";
+const BASE = "/api";
 
 export async function startScan(target_url) {
-  const res = await fetch(`${BASE_URL}/scan`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json"
-    },
-    body: JSON.stringify({ target_url })
-  });
+    const res = await fetch(`${BASE}/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_url }),
+    });
 
-  return res.json();
+    if (!res.ok) throw new Error("Scan failed");
+
+    return res.json();
 }
 
-export async function getScanResult(scanId) {
-  const res = await fetch(`${BASE_URL}/scan/${scanId}`, {
-    headers: {
-      "Accept": "application/json"
-    }
-  });
+export async function getScan(id) {
+    const res = await fetch(`${BASE}/scan/${id}`);
 
-  return res.json();
+    if (!res.ok) throw new Error("Fetch failed");
+
+    return res.json();
 }
